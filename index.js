@@ -1,6 +1,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const session = require('express-session');
 const bcrypt = require('bcryptjs');
 
 const db = require('./database/dbConfig.js');
@@ -8,9 +9,22 @@ const Users = require('./users/users-model.js');
 
 const server = express();
 
+const sessionConfig = {
+  name: 'snickerdoodle',
+  secret: process.env.SESSION_SECRET || 'keep it secret, keep it safe',
+  cookie: {
+    maxAge: 1000 * 60 * 60,
+    secure: false,
+    httpOnly: true,
+  },
+  resave: false,
+  saveUnitialized: true,
+};
+
 server.use(helmet());
 server.use(express.json());
 server.use(cors());
+server.use(session(sessionConfig));
 
 server.get('/', (req, res) => {
   res.send("It's alive!");
