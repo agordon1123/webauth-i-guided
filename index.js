@@ -1,24 +1,41 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
 
 const db = require('./database/dbConfig.js');
 const Users = require('./users/users-model.js');
 
 const server = express();
 
+const sessionConfig = {
+  name: 'snickerdoodle',
+  secret: process.env.SESSION_SECRET || 'keep it secret, keep it safe',
+  cookie: {
+    maxAge: 1000 * 60 * 60,
+    secure: false,
+    httpOnly: true,
+  },
+  resave: false,
+  saveUnitialized: true,
+};
+
 server.use(helmet());
 server.use(express.json());
 server.use(cors());
+server.use(session(sessionConfig));
 
 server.get('/', (req, res) => {
   res.send("It's alive!");
 });
 
 server.post('/api/register', (req, res) => {
-  let user = req.body;
+  let { username, password } = req.body;
 
-  Users.add(user)
+  const hash = bcrypt.hashSync(password, 8);
+
+  Users.add({ username, password: hash })
     .then(saved => {
       res.status(201).json(saved);
     })
@@ -33,7 +50,7 @@ server.post('/api/login', (req, res) => {
   Users.findBy({ username })
     .first()
     .then(user => {
-      if (user) {
+      if (user && bcrypt.compareSync(password, user.password)) {
         res.status(200).json({ message: `Welcome ${user.username}!` });
       } else {
         res.status(401).json({ message: 'Invalid Credentials' });
@@ -44,7 +61,7 @@ server.post('/api/login', (req, res) => {
     });
 });
 
-server.get('/api/users', (req, res) => {
+server.get('/api/users', credChecker, (req, res) => {
   Users.find()
     .then(users => {
       res.json(users);
@@ -52,5 +69,33 @@ server.get('/api/users', (req, res) => {
     .catch(err => res.send(err));
 });
 
+server.get('/api/hash', (req, res) => {
+  let name = req.query.name;
+  let hash = bcrypt.hashSync(name, 12);
+  name = hash;
+    
+  res.send(hash);
+});
+
 const port = process.env.PORT || 5000;
 server.listen(port, () => console.log(`\n** Running on port ${port} **\n`));
+
+// Middleware
+
+function credChecker(req, res, next) {
+  const { username, password } = req.headers;
+  if (username && password) {
+    Users.findBy({ username })
+      .first()
+      .then(user => {
+        if (user && bcrypt.compareSync(password, user.password)) {
+          next();
+        } else {
+          res.status(401).json({ message: 'Invalid credentials' });
+        }
+      })
+      .catch(err => res.status(500).json({ message: 'Unexpected error' }));
+  } else {
+    res.status(400).json({ message: 'No credentials provided' });
+  };
+};
